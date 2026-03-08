@@ -1,0 +1,199 @@
+// DEBUG: ensure DATABASE_URL is loaded
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String      @id @default(uuid())
+  googleId         String      @unique
+  email            String      @unique
+  firstName        String
+  lastName         String
+  username         String?
+  profileImage     String?
+
+  // profile completion fields
+  wroNumber        String?
+  examTarget       ExamTarget?
+  examGroup        ExamGroup?
+  attempt          Attempt?
+  mobile           String?
+  dob              DateTime?
+  city             String?
+  state            String?
+  gender           Gender?
+
+  profileCompleted Boolean     @default(false)
+
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  quizSessions     QuizSession[]
+}
+
+enum ExamTarget {
+  FOUNDATION
+  INTER
+  FINAL
+}
+
+enum ExamGroup {
+  G1
+  G2
+  BOTH
+}
+
+enum Attempt {
+  JAN
+  MAY
+  SEP
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+// MCQ Question Storage Models
+
+model Chapter {
+  id        String   @id @default(uuid())
+  name      String
+  order     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  units     Unit[]
+}
+
+model Unit {
+  id        String   @id @default(uuid())
+  name      String
+  order     Int
+  chapterId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  chapter      Chapter           @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  questions    Question[]
+  sessionUnits QuizSessionUnit[]
+}
+
+model Question {
+  id                 String   @id @default(uuid())
+  questionText       String
+  options            String[]
+  correctOptionIndex Int
+  unitId             String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  unit               Unit                  @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  sessionQuestions   QuizSessionQuestion[]
+  answers            QuizAnswer[]
+}
+
+// Quiz Session Models - Scalable Design
+
+model QuizSession {
+  id             String            @id @default(uuid())
+  userId         String
+  mode           QuizMode          @default(BASED_ON_QUESTIONS)
+  
+  // Core fields (common to all modes)
+  totalQuestions Int?
+  status         QuizStatus        @default(IN_PROGRESS)
+  score          Int?
+  correctCount   Int?
+  incorrectCount Int?
+  skippedCount   Int?
+  percentage     Float?
+  
+  // Flexible config for mode-specific data (JSON)
+  // This allows ANY mode to store custom data without schema changes
+  modeConfig     Json?             // e.g., { "duration": 120, "timeLimit": "2m" }
+  modeState      Json?             // e.g., { "livesRemaining": 3, "streak": 5 }
+  
+  // Multiplayer support (for future use)
+  roomId         String?           // For multiplayer sessions
+  isMultiplayer  Boolean           @default(false)
+  
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  startedAt      DateTime?         // When user started answering
+  completedAt    DateTime?         // When quiz was completed
+
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  units          QuizSessionUnit[]     // Multiple units support
+  questions      QuizSessionQuestion[]
+  answers        QuizAnswer[]
+}
+
+// Junction table for multiple units per session
+model QuizSessionUnit {
+  id        String   @id @default(uuid())
+  sessionId String
+  unitId    String
+  createdAt DateTime @default(now())
+
+  session QuizSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  unit    Unit        @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, unitId])
+}
+
+model QuizSessionQuestion {
+  id         String   @id @default(uuid())
+  sessionId  String
+  questionId String
+  order      Int
+  
+  // Generic tracking (works for all modes)
+  isAnswered Boolean  @default(false)
+  wasCorrect Boolean?
+  answeredAt DateTime?
+  
+  createdAt  DateTime @default(now())
+
+  session    QuizSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question   Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, order])
+}
+
+model QuizAnswer {
+  id                  String    @id @default(uuid())
+  sessionId           String
+  questionId          String
+  selectedOptionIndex Int?
+  isCorrect           Boolean?
+  answeredAt          DateTime? // Track when answered (for time-based modes)
+  timeSpent           Int?      // Time in seconds spent on this question
+  
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  session             QuizSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question            Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, questionId])
+}
+
+enum QuizMode {
+  BASED_ON_QUESTIONS
+  AGAINST_TIME
+  CAN_YOU_SURVIVE
+}
+
+enum QuizStatus {
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  ABANDONED
+}
