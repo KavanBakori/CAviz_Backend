@@ -33,10 +33,10 @@ router.get(
     const user = req.user as any;
 
     if (!user.profileCompleted) {
-      return res.redirect("http://localhost:5173/SignupPage");; // authProfileIncompleteRedirect
+      return res.redirect(`${frontendBaseUrl}/SignupPage`); 
     }
 
-    return res.redirect("http://localhost:5173/home"); authSuccessRedirect
+    return res.redirect(`${frontendBaseUrl}/home`);
   }
 );
 
